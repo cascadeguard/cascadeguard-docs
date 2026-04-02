@@ -3,45 +3,56 @@
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/)
-- [Task](https://taskfile.dev/installation/)
 
-No local Python setup needed — CascadeGuard runs entirely via Docker.
+That's it. No other tools to install.
 
-## Option 1: Try the Exemplar
+## Quick Start
 
-```bash
-git clone https://github.com/cascadeguard/cascadeguard-exemplar.git
-cd cascadeguard-exemplar
-task enrol
-task status
-```
-
-## Option 2: Start Your Own State Repository
-
-All you need is a `Taskfile.yaml`. Run `task init` to scaffold it:
+One command to scaffold a new state repo:
 
 ```bash
-mkdir my-state && cd my-state
-task init
+docker run --rm -v $(pwd):/workspace ghcr.io/cascadeguard/cascadeguard:v0.1.0 init
 ```
 
-This creates a `Taskfile.yaml` (no Docker image needed). Then download a
-working example:
-
-```bash
-task init:exemplar
-```
-
-This pulls `images.yaml` and `.cascadeguard.yaml` from the exemplar repo.
-You can also just create `images.yaml` manually — no `.cascadeguard.yaml`
-required, defaults are sensible.
+This creates:
+- `cascadeguard.sh` — a shell wrapper (all commands delegate to Docker)
+- `images.yaml` — a template with commented examples
 
 Edit `images.yaml` to enrol your images, then:
 
 ```bash
-task enrol
-task status
+./cascadeguard.sh enrol
+./cascadeguard.sh status
 ```
+
+### Alternative wrappers
+
+If you prefer Task, Make, or want all wrappers:
+
+```bash
+docker run --rm -v $(pwd):/workspace ghcr.io/cascadeguard/cascadeguard:v0.1.0 init --wrapper=taskfile
+docker run --rm -v $(pwd):/workspace ghcr.io/cascadeguard/cascadeguard:v0.1.0 init --wrapper=makefile
+docker run --rm -v $(pwd):/workspace ghcr.io/cascadeguard/cascadeguard:v0.1.0 init --wrapper=all
+```
+
+Or call Docker directly without any wrapper:
+
+```bash
+docker run --rm -v $(pwd):/workspace ghcr.io/cascadeguard/cascadeguard:v0.1.0 enrol
+```
+
+### Download exemplar files
+
+To start with a working example rather than a blank template:
+
+```bash
+docker run --rm -v $(pwd):/workspace ghcr.io/cascadeguard/cascadeguard:v0.1.0 init:exemplar
+```
+
+This pulls `images.yaml` and `.cascadeguard.yaml` from the
+[cascadeguard-exemplar](https://github.com/cascadeguard/cascadeguard-exemplar) repo.
+
+---
 
 ## Two usage modes
 
@@ -50,63 +61,76 @@ task status
 You orchestrate the pipeline from your CI system. CascadeGuard handles provider
 calls, polling, and supply chain policy.
 
+**Scheduled** (e.g. daily cron):
+```bash
+./cascadeguard.sh check            # reports upstream changes (table)
+./cascadeguard.sh check:json       # same, JSON for CI consumption
 ```
-MR/PR:   task validate
-Schedule: task check
-Trigger: task pipeline -- my-app
+
+**Triggered** (from CI, after check or manually):
+```bash
+./cascadeguard.sh pipeline              # all images with pending changes
+./cascadeguard.sh pipeline my-app       # specific image
 ```
 
 Or use individual steps:
 
 ```bash
-task build -- my-app
-task deploy -- my-app staging
-task test -- my-app staging
+./cascadeguard.sh build my-app
+./cascadeguard.sh deploy my-app staging
+./cascadeguard.sh test my-app staging
+./cascadeguard.sh deploy my-app production
 ```
 
-All tasks have a `:json` variant for CI scripting.
+All commands have a `:json` variant.
 
 ### Kargo mode (automatic promotion)
 
-Generate Kargo manifests and let Kargo handle everything:
+CascadeGuard generates Kargo manifests. Kargo handles monitoring and promotion.
 
 ```bash
-task enrol
-task kargo
+./cascadeguard.sh enrol
+./cascadeguard.sh setup:kargo
 ```
 
 ---
 
 ## Configuration (optional)
 
-Only create `.cascadeguard.yaml` if you want to override defaults.
+Everything has sensible defaults. Only create `.cascadeguard.yaml` to override.
 
 See [cascadeguard/.cascadeguard.yaml](https://github.com/cascadeguard/cascadeguard/blob/main/.cascadeguard.yaml)
-for the full reference with every option documented.
+for the full reference.
 
 ---
 
-## Tasks reference
+## Commands
 
-| Task | Description |
+| Command | Description |
 |---|---|
-| `task init` | Scaffold `Taskfile.yaml` |
-| `task init:exemplar` | Download exemplar `images.yaml` + `.cascadeguard.yaml` |
-| `task validate` | Lint `images.yaml`, dry-run |
-| `task enrol` | Generate/update state files |
-| `task check` | Poll upstreams, evaluate policy |
-| `task pipeline [-- <image>]` | Full automated pipeline |
-| `task build -- <image>` | Trigger CI build+test |
-| `task deploy -- <image> <env>` | Deploy to environment |
-| `task test -- <image> <env>` | Post-deploy tests |
-| `task kargo` | Generate Kargo manifests (Kargo mode) |
-| `task status` | Show generated files |
-| `task clean` | Remove generated files |
+| `init` | Scaffold state repo (shell wrapper + images.yaml) |
+| `init --wrapper=taskfile` | Also create Taskfile.yaml |
+| `init --wrapper=makefile` | Also create Makefile |
+| `init --wrapper=all` | Create all wrappers |
+| `init:exemplar` | Download exemplar files from GitHub |
+| `validate` | Lint images.yaml, dry-run |
+| `enrol` | Generate/update state files |
+| `check` | Poll upstreams, evaluate policy |
+| `build <image>` | Trigger CI build+test |
+| `deploy <image> <env>` | Deploy to environment |
+| `test <image> <env>` | Post-deploy tests |
+| `pipeline [image]` | Full automated pipeline |
+| `setup:kargo` | Generate Kargo manifests |
+| `setup:github` | Generate GitHub Actions workflows |
+| `setup:gitlab` | Generate GitLab CI config |
+| `setup:jenkins` | Generate Jenkinsfile |
+| `status` | Show generated files |
+| `clean` | Remove generated files |
 
-All tasks have a `:json` variant.
+---
 
 ## Override the image at runtime
 
 ```bash
-CASCADEGUARD_IMAGE=ghcr.io/cascadeguard/cascadeguard:dev task check
+CASCADEGUARD_IMAGE=ghcr.io/cascadeguard/cascadeguard:dev ./cascadeguard.sh check
 ```
