@@ -1,15 +1,15 @@
-# How-to: GitHub CI + Cloudflare CD
+# How-to: GitHub CI + Cloudflare Workers CD
 
-This guide walks through using CascadeGuard in a pipeline where **GitHub Actions** builds, scans, and signs your container images and **Cloudflare Pages / Workers** serves the deployed application.
+This guide walks through using CascadeGuard to manage container images in a pipeline where **GitHub Actions** builds, scans, and signs your images and **Cloudflare Workers** serves the deployed container.
 
-This is CascadeGuard's own setup. The workflows and configuration shown here are drawn directly from the [cascadeguard-app](https://github.com/cascadeguard/cascadeguard-app) and [cascadeguard-exemplar](https://github.com/cascadeguard/cascadeguard-exemplar) repositories.
+You will use the CascadeGuard CLI to enrol your image, generate state files, and generate the complete CI/CD pipeline — including the Cloudflare staging and production deploy steps. See [cascadeguard-exemplar](https://github.com/cascadeguard/cascadeguard-exemplar) for a working example of the generated output.
 
 ## Prerequisites
 
-- A GitHub repository with a `Dockerfile` (or a mono-repo with image subdirectories)
-- A Cloudflare account with a Pages or Workers project
-- A state repository to host CascadeGuard configuration and generated pipelines
-- `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets ready to add to GitHub
+- A working CascadeGuard installation (`cascadeguard --version` returns a version string; see [Getting Started](../getting-started.md) to install)
+- A GitHub repository containing a `Dockerfile`
+- A Cloudflare account with Workers enabled and `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` ready to add as GitHub repository secrets
+- A state repository (a separate Git repo) to host CascadeGuard configuration and generated pipelines
 
 ---
 
@@ -18,38 +18,102 @@ This is CascadeGuard's own setup. The workflows and configuration shown here are
 ```mermaid
 graph LR
     A[Developer pushes] --> B[GitHub Actions CI]
-    B --> C[Build image]
-    C --> D[Grype scan]
-    C --> E[Trivy scan]
-    D --> F{Pass?}
-    E --> F
-    F -->|Yes| G[Generate SBOM\nSyft]
-    G --> H[Sign with Cosign\nkeyless / OIDC]
-    H --> I[Push to GHCR]
-    I --> J[Cloudflare deploy\nPages or Workers]
-    K[Nightly cron] --> L[Re-scan published\nimages for new CVEs]
-    L --> M[Open GitHub Issue\nif CVEs found]
+    B --> C[cascadeguard build\nbuild container]
+    C --> D[cascadeguard scan\ncheck for CVEs]
+    D --> E{Pass?}
+    E -->|No| F[Fail build\nopen issue]
+    E -->|Yes| G[cascadeguard sign\nSBOM + Cosign]
+    G --> H[Push container\nto GHCR]
+    H --> I[CD: CF staging\ndeploy container]
+    I --> J[GitHub tests\nagainst staging]
+    J --> K[CD: CF production\ndeploy container]
+    L[Nightly cron] --> M[cascadeguard scan\nre-scan published images]
+    M --> N[Open GitHub Issue\nif new CVEs found]
 ```
 
-The key properties of this pipeline:
-
-- **Every image is scanned twice** — Grype and Trivy both run on every build; either can block a merge.
-- **Signing is keyless** — Cosign uses GitHub's OIDC token, so no long-lived signing secrets are needed.
-- **Drift is detected automatically** — The nightly scheduled scan re-checks published images against the latest vulnerability databases without rebuilding.
-- **Cloudflare deployment gates on CI** — The deploy workflow only runs after the image build and scan steps pass.
+The flow is:
+1. `cascadeguard images enrol` adds your image to `images.yaml`, including a deploy workflow configuration.
+2. `cascadeguard generate` reads the registry and writes per-image state files.
+3. `cascadeguard generate-ci` produces the complete GitHub Actions pipeline: container build/scan/sign + Cloudflare staging deploy + test gate + Cloudflare production deploy.
+4. The nightly `cascadeguard scan` re-checks published images against the latest vulnerability databases without rebuilding.
 
 ---
 
-## Step 1 — Initialise your state repository
+## Step 1 — Install CascadeGuard
 
-Create a new Git repository for CascadeGuard state. This repo holds your image enrollment config, generated state files, and CI pipelines.
+If you haven't already installed CascadeGuard, the quickest path is the shell wrapper:
+
+```bash
+curl -fsSL https://github.com/cascadeguard/cascadeguard/releases/latest/download/install.sh | sh
+```
+
+This installs a `cascadeguard` command that delegates to the Docker image under the hood — no local Python setup needed.
+
+Verify the install:
+
+```bash
+cascadeguard --version
+```
+
+> **Tip:** If you prefer not to install the wrapper, all commands in this guide can also be run via `task` (from the shared Taskfile) or directly with `docker run`. See [Getting Started](../getting-started.md) for both options.
+
+---
+
+## Step 2 — Initialise your state repository
+
+Create a new Git repository for CascadeGuard state. This repo stores your image enrollment config, generated state files, and CI/CD pipelines.
 
 ```bash
 mkdir my-state-repo && cd my-state-repo
 git init
 ```
 
-Add `images.yaml` to declare the images you want CascadeGuard to manage:
+Add `.cascadeguard.yaml` to set the target CI platform and the CascadeGuard version to use:
+
+```yaml
+# .cascadeguard.yaml
+image: ghcr.io/cascadeguard/cascadeguard
+version: v1.0.0
+
+ci:
+  platform: github
+```
+
+Include the shared Taskfile (optional, but convenient for local runs):
+
+```yaml
+# Taskfile.yaml
+version: '3'
+includes:
+  shared:
+    taskfile: https://raw.githubusercontent.com/cascadeguard/cascadeguard/v1.0.0/Taskfile.shared.yaml
+    flatten: true
+```
+
+---
+
+## Step 3 — Enrol your image
+
+Use `cascadeguard images enrol` to add your image to `images.yaml`. The `--deploy` flags tell `generate-ci` what CD pipeline to produce.
+
+```bash
+cascadeguard images enrol \
+  --name my-app \
+  --registry ghcr.io \
+  --repository your-org/my-app \
+  --provider github \
+  --repo your-org/my-app \
+  --dockerfile Dockerfile \
+  --branch main \
+  --rebuild-delay 7d \
+  --auto-rebuild \
+  --deploy cloudflare-workers \
+  --deploy-project my-app \
+  --deploy-staging-environment staging \
+  --deploy-production-environment production
+```
+
+This writes an entry to `images.yaml`:
 
 ```yaml
 # images.yaml
@@ -63,292 +127,123 @@ Add `images.yaml` to declare the images you want CascadeGuard to manage:
     branch: main
   rebuildDelay: 7d
   autoRebuild: true
+  deploy:
+    provider: cloudflare-workers
+    project: my-app
+    workflows:
+      - name: staging
+        environment: staging
+      - name: production
+        environment: production
+        gate: staging
 ```
 
-Add `.cascadeguard.yaml` to configure the tool:
-
-```yaml
-# .cascadeguard.yaml
-image: ghcr.io/cascadeguard/cascadeguard
-version: v1.0.0
-
-ci:
-  platform: github
-```
-
-Include the shared Taskfile so you can run CascadeGuard commands without a local Python install:
-
-```yaml
-# Taskfile.yaml
-version: '3'
-includes:
-  shared:
-    taskfile: https://raw.githubusercontent.com/cascadeguard/cascadeguard/v1.0.0/Taskfile.shared.yaml
-    flatten: true
-```
+The `workflows` list declares the CD stages. `generate-ci` uses this to wire up a staging deploy → test gate → production deploy sequence in the generated GitHub Actions pipeline.
 
 ---
 
-## Step 2 — Enrol your images
-
-Use the `enrol` command to add images to `images.yaml`. If you already wrote the file by hand you can skip this step.
+## Step 4 — Generate state files
 
 ```bash
-cascadeguard --images-yaml images.yaml enrol \
-  --name my-app \
-  --registry ghcr.io \
-  --repository your-org/my-app \
-  --provider github \
-  --repo your-org/my-app \
-  --dockerfile Dockerfile \
-  --branch main \
-  --rebuild-delay 7d
+cascadeguard generate
 ```
 
-Then generate the initial state files:
-
-```bash
-task generate
-```
-
-This reads `images.yaml`, queries the registry, and writes per-image state to `cascadeguard/state/`.
+This reads `images.yaml`, inspects the registry, and writes per-image state to `cascadeguard/state/`. On first run the state files show no prior build; they are populated after the first CI run.
 
 ---
 
-## Step 3 — Generate the CI pipeline
+## Step 5 — Generate the CI/CD pipeline
 
 ```bash
-task generate-ci
+cascadeguard generate-ci
 ```
 
-This emits four GitHub Actions workflow files under `.github/workflows/`:
+Because your `images.yaml` entry declares a `deploy` section with Cloudflare Workers, `generate-ci` emits a complete pipeline including the CD stages:
 
 | File | Trigger | What it does |
 |---|---|---|
-| `build-image.yaml` | `workflow_call` | Reusable: build → Grype scan → Trivy scan → SBOM → Cosign sign → push |
-| `ci.yaml` | Push to `main`, pull requests | Matrix build across all images in `images.yaml` |
-| `scheduled-scan.yaml` | Nightly cron | Re-scans published images; opens GitHub Issues on new CVEs |
-| `release.yaml` | Tag push (`v*`) | Builds, signs, and pushes with a release tag |
+| `build-image.yaml` | `workflow_call` | Build container → scan → generate SBOM → sign → push to GHCR |
+| `ci.yaml` | Push to `main`, pull requests | Matrix build; on `main` also triggers CD workflows |
+| `deploy-staging.yaml` | Called by `ci.yaml` on `main` | Pull container from GHCR and deploy to Cloudflare Workers (staging) |
+| `run-tests.yaml` | Called after staging deploy | Run acceptance tests against the staging Worker URL |
+| `deploy-production.yaml` | Called after tests pass | Deploy container to Cloudflare Workers (production) |
+| `scheduled-scan.yaml` | Nightly cron | Re-scan published images; open GitHub Issues on new CVEs |
+| `release.yaml` | Tag push (`v*`) | Build, sign, and push with release tag |
 
-> **Do not edit these files by hand.** They carry an `# Auto-generated by CascadeGuard` header. Any edits will be overwritten the next time you run `generate-ci`.
+> **Do not edit these files by hand.** They carry an `# Auto-generated by CascadeGuard` header. Re-run `cascadeguard generate-ci` after any `images.yaml` change.
 
-Commit and push to your state repo:
+Commit and push everything:
 
 ```bash
 git add .
-git commit -m "chore: initialise CascadeGuard state and CI"
+git commit -m "chore: initialise CascadeGuard state and CI/CD"
 git push
 ```
 
 ---
 
-## Step 4 — Add repository secrets
+## Step 6 — Add repository secrets
 
-The generated workflows require two GitHub repository secrets:
+Add these secrets to your GitHub repository (Settings → Secrets and variables → Actions):
 
 | Secret | Value |
 |---|---|
-| `CLOUDFLARE_API_TOKEN` | A Cloudflare API token with Pages / Workers deploy permission |
+| `CLOUDFLARE_API_TOKEN` | A Cloudflare API token with Workers deploy permission |
 | `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID |
 
-`GITHUB_TOKEN` is injected automatically by GitHub Actions and requires no manual setup.
+`GITHUB_TOKEN` is injected automatically and requires no manual setup.
 
-The generated CI workflows also need these **permissions** on the workflow or repository level:
+The generated workflows request these permissions (already set in the generated files):
 
 ```yaml
 permissions:
   contents: read
-  packages: write      # push to GHCR
+  packages: write      # push container to GHCR
   id-token: write      # Cosign keyless signing via OIDC
-  issues: write        # scheduled-scan.yaml opens issues on new CVEs
+  issues: write        # open issues when new CVEs are found
 ```
-
-These permissions are already present in the generated files.
-
----
-
-## Step 5 — Add the Cloudflare deploy step
-
-The generated `ci.yaml` handles the image build pipeline. You add a separate job (or workflow) that runs the Cloudflare deployment after images pass scanning.
-
-### Cloudflare Pages (static frontend)
-
-```yaml
-# .github/workflows/deploy-web.yaml
-name: Deploy Web
-
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'packages/web/**'
-
-jobs:
-  staging:
-    name: Deploy to staging
-    runs-on: ubuntu-latest
-    environment: staging
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-        env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL_STAGING }}
-
-      - name: Deploy to Cloudflare Pages (staging)
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=my-app --branch=staging
-
-  production:
-    name: Deploy to production
-    needs: [staging]
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-        env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
-
-      - name: Deploy to Cloudflare Pages (production)
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=my-app --branch=main
-```
-
-### Cloudflare Workers (API / backend)
-
-For a Python or TypeScript Worker, use `wrangler deploy` with a `wrangler.toml`:
-
-```yaml
-      - name: Deploy Worker
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --env production
-          workingDirectory: api
-```
-
-**Staging-before-production pattern:** Both examples above deploy to staging first, run a smoke test, then gate production on staging passing. This pattern is used in the CascadeGuard production setup.
-
----
-
-## Step 6 — Pin your GitHub Actions
-
-With CascadeGuard's `actions pin` command, you can lock every `uses:` line in your workflows to an exact commit SHA. This prevents supply-chain attacks where a mutable tag (like `@v3`) is silently updated.
-
-```bash
-cascadeguard actions pin --workflow .github/workflows/deploy-web.yaml
-```
-
-Or pin all workflows at once:
-
-```bash
-cascadeguard actions pin
-```
-
-Each step changes from:
-
-```yaml
-uses: actions/checkout@v4
-```
-
-to:
-
-```yaml
-uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-```
-
-You can also enforce this across your repo with the `cascadeguard actions audit` command — or add an `enforce-actions-policy.yaml` workflow that blocks merges if any unpinned actions are found.
 
 ---
 
 ## Step 7 — Verify the pipeline
 
-After pushing to your state repo, GitHub Actions should trigger automatically. Check the following:
+After pushing, GitHub Actions will trigger. Once CI completes, confirm the image and deployment are healthy:
 
 ```bash
-# View current image status (versions, digests, build times, dependency graph)
-cascadeguard --state-dir cascadeguard/state status
-# or via task:
-task status
-```
+# Check current image status: digest, last build time, base image deps
+cascadeguard status
 
-Expected output includes a table showing each managed image, its current digest, when it was last built, and which base images it depends on.
-
-```bash
-# Run a manual scan against a published image
+# Run a manual scan against the published image
 cascadeguard scan ghcr.io/your-org/my-app:latest
 ```
 
-This prints the scan results from both Grype and Trivy, matching what CI would report.
+`cascadeguard status` prints a table of every managed image showing version, registry digest, build time, and dependency relationships. `cascadeguard scan` prints scan results matching what CI would report — useful for debugging a failed build locally.
 
 ---
 
 ## Optional — Switch to CascadeGuard managed secure base images
 
-CascadeGuard publishes a set of hardened base images from [cascadeguard-open-secure-images](https://github.com/cascadeguard/cascadeguard-open-secure-images). These are pre-scanned, regularly updated, and signed.
+CascadeGuard publishes regularly-updated, pre-scanned base images via [cascadeguard-open-secure-images](https://github.com/cascadeguard/cascadeguard-open-secure-images). Switching to a managed base image means CascadeGuard will automatically queue a rebuild of your image whenever the base is updated.
 
-To use a managed base image, update your `Dockerfile`:
+Update your `Dockerfile`:
 
 ```dockerfile
 # Before
-FROM python:3.12-slim
+FROM nginx:1.27-alpine
 
-# After — pinned to a CascadeGuard managed image
-FROM ghcr.io/cascadeguard/python:3.12-slim
+# After — CascadeGuard managed image
+FROM ghcr.io/cascadeguard/nginx:1.27-alpine
 ```
 
-Then update `images.yaml` to reflect the new base:
-
-```yaml
-- name: my-app
-  registry: ghcr.io
-  repository: your-org/my-app
-  source:
-    provider: github
-    repo: your-org/my-app
-    dockerfile: Dockerfile
-    branch: main
-  rebuildDelay: 7d
-  autoRebuild: true
-```
-
-Because `autoRebuild: true` is set, CascadeGuard will automatically queue a rebuild of `my-app` whenever the managed base image is updated. You do not need to manually track upstream base image versions.
+Then re-run `cascadeguard generate` to update state and `cascadeguard generate-ci` to regenerate pipelines. The `autoRebuild: true` flag in `images.yaml` handles triggering rebuilds automatically on any future base image update.
 
 ---
 
 ## Next steps
 
-- [CLI Reference](../reference/cli.md) — `cascadeguard scan`, `cascadeguard status`, `cascadeguard actions pin`, and all other commands
+- [Getting Started](../getting-started.md) — installation and first setup
+- [CLI Reference](../reference/cli.md) — full reference for `cascadeguard images enrol`, `scan`, `status`, `generate-ci`, and all other commands
 - [GitHub Actions Integration Guide](../integrations/github-actions.md) — how the generated workflows are structured and how to customise them
-- [Security Model](../security-model.md) — how CascadeGuard handles SBOM generation, Cosign signing, and scan gating
+- [Security Model](../security-model.md) — SBOM generation, Cosign signing, and scan gating
 - [cascadeguard-exemplar](https://github.com/cascadeguard/cascadeguard-exemplar) — a working state repository with real generated workflows
-- [GitLab CI + Argo CD guide](gitlab-argocd.md) — the same walkthrough for GitLab + ArgoCD + Kargo
+- [GitLab CI + Argo CD](gitlab-argocd.md) — the same walkthrough for GitLab + ArgoCD + Kargo
