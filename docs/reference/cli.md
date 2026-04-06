@@ -1,36 +1,46 @@
 # CLI Reference
 
-CascadeGuard is invoked as a Docker container or directly via the `cascadeguard` binary. All commands accept global flags for specifying file paths.
+CascadeGuard uses a noun-verb command structure. Commands are grouped by the resource they operate on.
 
-## Global flags
+## Command groups
+
+| Group | Description |
+|---|---|
+| `images` | Image lifecycle management |
+| `pipeline` | CI/CD orchestration |
+| `vuln` | Vulnerability management |
+| `actions` | GitHub Actions utilities |
+
+---
+
+## `images` — Image lifecycle management
+
+Flags scoped to `images` subcommands:
 
 | Flag | Default | Description |
 |---|---|---|
 | `--images-yaml PATH` | `images.yaml` | Path to the image enrollment file |
 | `--state-dir PATH` | `state` | Path to the state directory |
 
-## Commands
-
-### `validate`
+### `images validate`
 
 Validates your `images.yaml` configuration without making any changes.
 
 ```bash
-cascadeguard validate
-# or via Docker:
-docker run --rm -v $(pwd):/workspace ghcr.io/cascadeguard/cascadeguard:v1.0.0 validate
+cascadeguard images validate
+cascadeguard images --images-yaml custom.yaml validate
 ```
 
 Exits with a non-zero status if the file is malformed or contains invalid values.
 
 ---
 
-### `enrol`
+### `images enrol`
 
 Adds a new image entry to `images.yaml`.
 
 ```bash
-cascadeguard --images-yaml images.yaml enrol \
+cascadeguard images enrol \
   --name <name> \
   --registry <registry> \
   --repository <repository> \
@@ -56,34 +66,37 @@ After enrolling, run `generate` and `generate-ci` to update state files and pipe
 
 ---
 
-### `check`
+### `images check`
 
-Checks image and base image states against the registry. Useful for verifying the current CVE posture before a release.
+Checks image and base image states against the registry.
 
 ```bash
-cascadeguard check
+cascadeguard images check
+cascadeguard images --state-dir /path/to/state check
 ```
 
 ---
 
-### `status`
+### `images status`
 
 Prints a summary table of every managed image and base image, including version, digest, build time, and dependency information.
 
 ```bash
-cascadeguard status
+cascadeguard images status
 # or via Docker:
 docker run --rm -v $(pwd):/workspace ghcr.io/cascadeguard/cascadeguard:v1.0.0 status
 ```
 
 ---
 
-### `build`
+## `pipeline` — CI/CD orchestration
+
+### `pipeline build`
 
 Triggers a build for a specific image via the GitHub Actions API.
 
 ```bash
-cascadeguard build \
+cascadeguard pipeline build \
   --image <name> \
   [--tag <tag>] \
   [--repo <github-repo>] \
@@ -99,12 +112,12 @@ cascadeguard build \
 
 ---
 
-### `deploy`
+### `pipeline deploy`
 
 Triggers an ArgoCD sync for a specific application.
 
 ```bash
-cascadeguard deploy \
+cascadeguard pipeline deploy \
   --image <name> \
   --app <argocd-app> \
   [--argocd-server <url>] \
@@ -120,12 +133,12 @@ cascadeguard deploy \
 
 ---
 
-### `test`
+### `pipeline test`
 
 Queries GitHub Actions for the latest test run results for a specific image.
 
 ```bash
-cascadeguard test \
+cascadeguard pipeline test \
   --image <name> \
   [--repo <github-repo>] \
   [--github-token <token>]
@@ -133,12 +146,14 @@ cascadeguard test \
 
 ---
 
-### `pipeline`
+### `pipeline run`
 
 Runs the full pipeline in sequence: `validate → check → build → deploy → test`.
 
 ```bash
-cascadeguard pipeline \
+cascadeguard pipeline run \
+  [--images-yaml <path>] \
+  [--state-dir <path>] \
   [--image <name>] \
   [--tag <tag>] \
   [--repo <github-repo>] \
@@ -148,9 +163,59 @@ cascadeguard pipeline \
   [--argocd-token <token>]
 ```
 
-All flags are optional. If `--image` is omitted, the pipeline runs for all enrolled images.
+All flags are optional. If `--image` is omitted, the pipeline runs validate and check for all enrolled images.
 
 ---
+
+## `vuln` — Vulnerability management
+
+### `vuln report`
+
+Parses scanner output (Grype and/or Trivy) and writes diffable vulnerability reports.
+
+```bash
+cascadeguard vuln report \
+  --image <name> \
+  --dir <output-dir> \
+  [--grype <grype-json>] \
+  [--trivy <trivy-json>]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--image` | — (required) | Image name (used in report metadata) |
+| `--dir` | — (required) | Output directory, e.g. `images/alpine/reports` |
+| `--grype` | — | Path to Grype JSON results file |
+| `--trivy` | — | Path to Trivy JSON results file |
+
+---
+
+### `vuln issues`
+
+Creates, updates, or reopens per-CVE GitHub issues from scan results.
+
+```bash
+cascadeguard vuln issues \
+  --image <name> \
+  --repo <github-repo> \
+  [--tag <tag>] \
+  [--grype <grype-json>] \
+  [--trivy <trivy-json>] \
+  [--github-token <token>]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--image` | — (required) | Image name |
+| `--repo` | — (required) | GitHub repository, e.g. `org/repo` |
+| `--tag` | — | Image tag |
+| `--grype` | — | Path to Grype JSON results file |
+| `--trivy` | — | Path to Trivy JSON results file |
+| `--github-token` | `$GITHUB_TOKEN` | GitHub API token |
+
+---
+
+## `actions` — GitHub Actions utilities
 
 ### `actions pin`
 
@@ -160,7 +225,7 @@ Rewrites GitHub Actions workflow files to pin `uses:` references from floating t
 cascadeguard actions pin \
   [--workflows-dir <path>] \
   [--dry-run] \
-  [--refresh] \
+  [--update] \
   [--github-token <token>]
 ```
 
@@ -168,7 +233,7 @@ cascadeguard actions pin \
 |---|---|---|
 | `--workflows-dir` | `.github/workflows` | Path to the workflows directory |
 | `--dry-run` | false | Preview changes without writing files |
-| `--refresh` | false | Re-pin already-pinned SHAs to the latest SHA for the same tag |
+| `--update` | false | Re-pin already-pinned SHAs to the latest SHA for the same tag |
 | `--github-token` | `$GITHUB_TOKEN` | GitHub token for resolving SHA lookups |
 
 ---
@@ -213,12 +278,12 @@ cascadeguard actions policy init \
 
 State repositories typically use CascadeGuard via the shared Taskfile rather than calling `cascadeguard` directly:
 
-| Task | Equivalent command | Description |
-|---|---|---|
-| `task generate` | `cascadeguard generate` | Generate state files from `images.yaml` |
-| `task synth` | `cascadeguard synth` | Generate Kargo manifests |
-| `task generate-and-synth` | Both above in sequence | Full regeneration |
-| `task generate-ci` | `cascadeguard generate-ci` | Generate GitHub Actions workflow files |
-| `task status` | `cascadeguard status` | Show image status table |
+| Task | Description |
+|---|---|
+| `task generate` | Generate state files from `images.yaml` |
+| `task synth` | Generate Kargo manifests |
+| `task generate-and-synth` | Full regeneration (generate then synth) |
+| `task generate-ci` | Generate GitHub Actions workflow files |
+| `task status` | Show image status table |
 
 See [Getting Started](../getting-started.md) for the full Taskfile setup.
