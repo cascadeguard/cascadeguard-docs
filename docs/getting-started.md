@@ -159,3 +159,10 @@ Prints a summary table of every application image and base image, including vers
 - [CLI Reference](reference/cli.md) — full command reference
 - [images.yaml Reference](reference/images-yaml.md) — schema and options
 - [Security Model](security-model.md) — how CascadeGuard handles scanning, SBOMs, and signing
+
+## How-to Guides
+
+End-to-end walkthroughs for specific CI/CD combinations:
+
+- [GitHub CI + Cloudflare CD](guides/github-cloudflare.md) — GitHub Actions for image build/scan/sign, Cloudflare Pages/Workers for deployment (CascadeGuard's own setup)
+- [GitLab CI + Argo CD](guides/gitlab-argocd.md) — GitLab CI/CD pipelines with Argo CD and Kargo for Kubernetes deployment
