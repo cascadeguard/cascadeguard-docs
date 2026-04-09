@@ -22,6 +22,29 @@ Flags scoped to `images` subcommands:
 | `--images-yaml PATH` | `images.yaml` | Path to the image enrollment file |
 | `--state-dir PATH` | `state` | Path to the state directory |
 
+### Command design
+
+CascadeGuard commands follow a `<noun> <verb>` naming convention. The noun is the resource (`images`, `pipeline`, `vuln`, `actions`) and the verb is the operation. This keeps related commands grouped and tab-completion predictable.
+
+The `images` subcommands cover the full image lifecycle:
+
+| Command | Network? | Reads | Writes | Purpose |
+|---|---|---|---|---|
+| `images validate` | No | `images.yaml` | — | Syntax and schema check before making changes |
+| `images enrol` | No | — | `images.yaml` | Register a new image for tracking |
+| `images check` | **Yes** | state files, live registry | — | Detect digest drift on already-enrolled tags |
+| `images check-upstream` | **Yes** | `images.yaml`, Docker Hub | — | Discover new stable upstream tags not yet enrolled |
+| `images status` | No | state files | — | Display current enrollment state and metadata |
+
+**Why `check` and `check-upstream` are separate commands:**
+
+- `images check` is an *offline verification* step: it reads the digests already recorded in local state files and confirms they still match what the registry serves. If a tag's digest changed without a new version being enrolled, `check` surfaces that as drift.
+- `images check-upstream` is a *network discovery* step: it reaches out to Docker Hub to find entirely new tags (e.g. `alpine:3.22`) that predate any local state. It tells you "there is a newer version you haven't enrolled yet."
+
+Keeping them separate means `check` can run in air-gapped or rate-limited environments as a fast integrity assertion, while `check-upstream` is reserved for the scheduled discovery job that may paginate many tag pages from Docker Hub.
+
+---
+
 ### `images validate`
 
 Validates your `images.yaml` configuration without making any changes.
@@ -68,12 +91,56 @@ After enrolling, run `generate` and `generate-ci` to update state files and pipe
 
 ### `images check`
 
-Checks image and base image states against the registry.
+Compares locally recorded image digests against the live registry to detect **digest drift** — when a tag's digest changes upstream without a corresponding version bump.
 
 ```bash
 cascadeguard images check
 cascadeguard images --state-dir /path/to/state check
+cascadeguard images check --image <name>
+cascadeguard images check --format json
 ```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--image` | — | Scope check to a single image (matches state file stem); omit to check all |
+| `--format` | `table` | Output format: `table` or `json` |
+
+**Exit codes:** `0` all images OK · `1` drift detected, registry unreachable, or image not found
+
+**Status values in output:**
+
+| Status | Meaning |
+|---|---|
+| `ok` | Recorded digest matches live digest |
+| `drift` | Recorded digest differs from live digest — rebuild recommended |
+| `error` | Registry could not be reached |
+| `skipped` | Image missing version or tag information |
+| `unknown` | No local digest recorded yet (run `generate` first) |
+
+> **When to use:** Run after `generate` to confirm enrolled digests still match what is live. Use `check-upstream` to find *new* tags that have not yet been enrolled.
+
+---
+
+### `images check-upstream`
+
+Queries Docker Hub for new stable semver tags across your enrolled base images that are not yet enrolled in `images.yaml`. Useful for staying ahead of upstream releases without manual monitoring.
+
+```bash
+cascadeguard images check-upstream
+cascadeguard images check-upstream --image <name>
+cascadeguard images check-upstream --format json
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--image` | — | Scope check to a single image name (as listed in `images.yaml`); omit to check all |
+| `--format` | `table` | Output format: `table` or `json` |
+
+**Exit codes:** `0` no new tags found · `1` new tags available (action recommended)
+
+Only stable tags are surfaced — `latest`, `edge`, `nightly`, and pre-release suffixes (`-rc`, `-alpha`, `-beta`, etc.) are filtered out. Results are scoped to the same major version as currently enrolled tags.
+
+> **When to use:** Invoked automatically by the `cascadeguard-actions/check-upstream` action on a daily schedule. Run manually to check for upstream drift before a planned enrolment cycle.
 
 ---
 
