@@ -47,7 +47,7 @@ If you haven't already installed CascadeGuard, the quickest path is the shell wr
 curl -fsSL https://github.com/cascadeguard/cascadeguard/releases/latest/download/install.sh | sh
 ```
 
-This installs a `cascadeguard` command that delegates to the Docker image under the hood — no local Python setup needed.
+This installs a `cascadeguard` shell command that uses a Python venv or Docker container based on your detected local setup — no manual environment configuration needed.
 
 Verify the install:
 
@@ -55,7 +55,7 @@ Verify the install:
 cascadeguard --version
 ```
 
-> **Tip:** If you prefer not to install the wrapper, all commands in this guide can also be run via `task` (from the shared Taskfile) or directly with `docker run`. See [Getting Started](../getting-started.md) for both options.
+See [Getting Started](../getting-started.md) for full installation options.
 
 ---
 
@@ -64,7 +64,7 @@ cascadeguard --version
 Create a new Git repository for CascadeGuard state. This repo stores your image enrollment config, generated state files, and CI/CD pipelines.
 
 ```bash
-mkdir my-state-repo && cd my-state-repo
+mkdir cascadeguard-state && cd cascadeguard-state
 git init
 ```
 
@@ -79,17 +79,6 @@ ci:
   platform: github
 ```
 
-Include the shared Taskfile (optional, but convenient for local runs):
-
-```yaml
-# Taskfile.yaml
-version: '3'
-includes:
-  shared:
-    taskfile: https://raw.githubusercontent.com/cascadeguard/cascadeguard/v1.0.0/Taskfile.shared.yaml
-    flatten: true
-```
-
 ---
 
 ## Step 3 — Enrol your image
@@ -99,18 +88,9 @@ Use `cascadeguard images enrol` to add your image to `images.yaml`. The `--deplo
 ```bash
 cascadeguard images enrol \
   --name my-app \
-  --registry ghcr.io \
   --repository your-org/my-app \
-  --provider github \
-  --repo your-org/my-app \
-  --dockerfile Dockerfile \
-  --branch main \
-  --rebuild-delay 7d \
-  --auto-rebuild \
   --deploy cloudflare-workers \
-  --deploy-project my-app \
-  --deploy-staging-environment staging \
-  --deploy-production-environment production
+  --deploy-project my-app
 ```
 
 This writes an entry to `images.yaml`:
@@ -223,7 +203,7 @@ cascadeguard scan ghcr.io/your-org/my-app:latest
 
 ## Optional — Switch to CascadeGuard managed secure base images
 
-CascadeGuard publishes regularly-updated, pre-scanned base images via [cascadeguard-open-secure-images](https://github.com/cascadeguard/cascadeguard-open-secure-images). Switching to a managed base image means CascadeGuard will automatically queue a rebuild of your image whenever the base is updated.
+CascadeGuard publishes regularly-updated, pre-scanned base images via [cascadeguard-open-secure-images](https://github.com/cascadeguard/cascadeguard-open-secure-images). Switching to a managed base image means CascadeGuard will automatically queue a rebuild of your image whenever the base is updated, with supply chain protections you control through the state repository.
 
 Update your `Dockerfile`:
 
@@ -236,6 +216,18 @@ FROM ghcr.io/cascadeguard/nginx:1.27-alpine
 ```
 
 Then re-run `cascadeguard generate` to update state and `cascadeguard generate-ci` to regenerate pipelines. The `autoRebuild: true` flag in `images.yaml` handles triggering rebuilds automatically on any future base image update.
+
+---
+
+## Optional — Protect your GitHub Actions supply chain
+
+Install the CascadeGuard action in other repositories to audit and enforce a policy on the GitHub Actions used in their workflows — protecting against supply chain issues in actions.
+
+```bash
+cascadeguard actions install --repo your-org/your-repo
+```
+
+This adds a workflow that audits all referenced actions on every PR and blocks merges that introduce unpinned or policy-violating actions.
 
 ---
 
