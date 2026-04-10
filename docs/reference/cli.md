@@ -22,6 +22,23 @@ Flags scoped to `images` subcommands:
 | `--images-yaml PATH` | `images.yaml` | Path to the image enrollment file |
 | `--state-dir PATH` | `state` | Path to the state directory |
 
+### Command design
+
+CascadeGuard commands follow a `<noun> <verb>` naming convention. The noun is the resource (`images`, `pipeline`, `vuln`, `actions`) and the verb is the operation. This keeps related commands grouped and tab-completion predictable.
+
+The `images` subcommands cover the full image lifecycle:
+
+| Command | Network? | Reads | Writes | Purpose |
+|---|---|---|---|---|
+| `images validate` | No | `images.yaml` | — | Syntax and schema check before making changes |
+| `images enrol` | No | — | `images.yaml` | Register a new image for tracking |
+| `images check` | **Yes** | state files, `images.yaml`, live registry | — | Detect digest drift on enrolled tags and discover new stable upstream tags not yet enrolled |
+| `images status` | No | state files | — | Display current enrollment state and metadata |
+
+`images check` is the single network-hitting command in the `images` group. It combines two checks in one pass: it verifies that enrolled digests still match what the registry serves, and it queries upstream for new stable semver tags that have not yet been enrolled. This means CI pipelines need only one network call for both drift detection and upstream discovery.
+
+---
+
 ### `images validate`
 
 Validates your `images.yaml` configuration without making any changes.
@@ -68,12 +85,40 @@ After enrolling, run `generate` and `generate-ci` to update state files and pipe
 
 ### `images check`
 
-Checks image and base image states against the registry.
+Checks enrolled images against the live registry in a single pass:
+
+1. **Digest drift** — verifies that each enrolled tag's recorded digest still matches what the registry serves.
+2. **New upstream tags** — queries Docker Hub for new stable semver tags not yet enrolled in `images.yaml`.
 
 ```bash
 cascadeguard images check
 cascadeguard images --state-dir /path/to/state check
+cascadeguard images check --image <name>
+cascadeguard images check --format json
 ```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--image` | — | Scope check to a single image (matches state file stem); omit to check all |
+| `--format` | `table` | Output format: `table` or `json` |
+
+**Exit codes:** `0` clean (no drift, no new tags) · `1` drift detected, new tags found, registry unreachable, or image not found
+
+Non-fatal network errors (transient registry timeouts) are reported per-image in the output without aborting the full run. A network error for one image still causes exit code `1`.
+
+**Drift status values in output:**
+
+| Status | Meaning |
+|---|---|
+| `ok` | Recorded digest matches live digest |
+| `drift` | Recorded digest differs from live digest — rebuild recommended |
+| `error` | Registry could not be reached |
+| `skipped` | Image missing version or tag information |
+| `unknown` | No local digest recorded yet (run `generate` first) |
+
+Only stable upstream tags are surfaced — `latest`, `edge`, `nightly`, and pre-release suffixes (`-rc`, `-alpha`, `-beta`, etc.) are filtered out. Results are scoped to the same major version as currently enrolled tags.
+
+> **When to use:** Run after `generate` to confirm enrolled digests still match what is live and to check for new upstream releases in a single command.
 
 ---
 
