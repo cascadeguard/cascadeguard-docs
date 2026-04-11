@@ -163,7 +163,7 @@ CascadeGuard reads the updated `images.yaml`, inspects the registry, and writes 
 **Step 3 — Commit and push**
 
 ```bash
-git add images.yaml cascadeguard/state/images/my-worker.yaml
+git add images.yaml .cascadeguard/images/my-worker.yaml
 git commit -m "enrol my-worker image"
 git push
 ```

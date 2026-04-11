@@ -1,12 +1,23 @@
-# Getting Started with CascadeGuard
+# Getting Started with CascadeGuard Image Factory
 
-CascadeGuard automates container image lifecycle management. It monitors base images for updates, discovers Dockerfile dependencies, and orchestrates intelligent rebuilds through a GitOps workflow using Kargo and ArgoCD.
+CascadeGuard Image Factory automates container image lifecycle management. It monitors base images for updates, discovers Dockerfile dependencies, identifies vulnerabilities and orchestrates intelligent rebuilds through your existing build tools & processes.
 
 ## Prerequisites
 
-- Docker (for running CascadeGuard without a local Python install)
-- A GitHub repository to use as your **state repository**
-- Kargo and ArgoCD running in your Kubernetes cluster (for full orchestration)
+- Python 3.11+ (installed automatically via the install script)
+- A repository to use as your **state repository**
+
+## Install
+
+```bash
+# macOS / Linux
+curl -sSL https://raw.githubusercontent.com/cascadeguard/cascadeguard/main/install.sh | sh
+
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/cascadeguard/cascadeguard/main/install.ps1 | iex
+```
+
+This installs CascadeGuard to `~/.cascadeguard` and adds it to your PATH as `cascadeguard` and `cg`.
 
 ## Concepts
 
@@ -15,12 +26,12 @@ CascadeGuard automates container image lifecycle management. It monitors base im
 CascadeGuard is driven by a **state repository** — a Git repo that declares which images you manage and tracks their current state. It contains:
 
 - `images.yaml` — enrollment configuration for all managed images
-- `cascadeguard/state/images/` — per-image state files
-- `cascadeguard/state/base-images/` — tracked upstream base image state
-- `.cascadeguard.yaml` — tool configuration (CI platform, etc.)
-- `.github/workflows/` — auto-generated CI pipelines
+- `.cascadeguard.yaml` — repo-level defaults and tool configuration
+- `base-images/` — tracked upstream base image state (generated)
+- `images/` — per-image state files (generated)
+- `.github/workflows/` — auto-generated CI pipelines (generated)
 
-See [cascadeguard-exemplar](https://github.com/cascadeguard/cascadeguard-exemplar) for a complete working example.
+See [cascadeguard-exemplar](https://github.com/cascadeguard/cascadeguard-exemplar) and [cascadeguard-open-secure-images](https://github.com/cascadeguard/cascadeguard-open-secure-images) for complete working examples, and [cascadeguard-seed](https://github.com/cascadeguard/cascadeguard-seed) for the seed repo thats used when cg images init is used.
 
 ### Image Types
 
@@ -32,126 +43,122 @@ See [cascadeguard-exemplar](https://github.com/cascadeguard/cascadeguard-exempla
 
 ## Quick Start
 
-### 1. Initialize your state repository
+### 1. Initialise your repo (optional)
 
-Create a new Git repository and add the following `images.yaml`:
-
-```yaml
-images:
-  - name: my-app
-    registry: ghcr.io
-    repository: your-org/my-app
-    source:
-      provider: github
-      repo: your-org/my-app
-      dockerfile: Dockerfile
-      branch: main
-    rebuild_delay: 7d
+```bash
+cg images init
 ```
 
-Add a `.cascadeguard.yaml` for tool configuration:
+Init pulls the latest seed from [cascadeguard-seed](https://github.com/cascadeguard/cascadeguard-seed) giving you a ready to go starting point, including:
+
+- An example image you can build to see it working
+- A PR Checker that validates images.yaml to prevent mistakes being merged to main
+- A daily scheduled task to monitor the upstream image(s) of your images
+ 
+You can set repo-level defaults so you don't repeat common fields on every image:
 
 ```yaml
+# .cascadeguard.yaml
+defaults:
+  registry: ghcr.io/your-org       # applied to all images missing a registry
+  local:
+    dir: images                     # folder containing per-image Dockerfiles
+
 ci:
   platform: github
 ```
 
-### 2. Include the shared Taskfile
+### 2. Create `images.yaml`
 
-Add a `Taskfile.yaml` to your state repo:
+This file is where the images CascadeGuard should monitor & manage are defined. Config from `.cascadeguard.yaml` defaults if not set per-image.
+
+The content can be added to this file directly in the yaml:
 
 ```yaml
-version: '3'
-includes:
-  shared:
-    taskfile: https://raw.githubusercontent.com/cascadeguard/cascadeguard/v1.0.0/Taskfile.shared.yaml
-    flatten: true
+# Managed images — CascadeGuard builds, scans, and signs these
+- name: my-app
+  dockerfile: images/my-app/Dockerfile
+  image: my-app
+  tag: latest
+
+# Upstream-tracked images — CVE monitoring only, no build
+- name: memcached
+  enabled: false
+  namespace: library
 ```
 
-### 3. Generate state files
+Or by using the images enrol method:
 
 ```bash
-task generate
+cg images enrol \
+  --name my-new-service \
+  --registry ghcr.io \
+  --repository your-org/my-new-service
 ```
 
-This reads `images.yaml`, inspects the Docker registries, and writes state files to `cascadeguard/state/`.
-
-### 4. Generate CI pipelines
+### 3. Validate your configuration
 
 ```bash
-task generate-ci
+cg images validate
 ```
 
-This emits four GitHub Actions workflow files under `.github/workflows/`:
+Verifies that the state in images.yaml and .cascadeguard.yaml is valid. This can be used in a PR check or similar.
+
+### 5. Generate state files
+
+```bash
+cg images generate
+```
+
+This reads `images.yaml`, analyzes Dockerfiles to discover base image dependencies, and writes state files to `base-images/` and `images/`.
+
+### 6. Generate CI pipelines
+
+```bash
+cg build generate
+```
+
+This emits the GitHub Actions workflow files under `.github/workflows/` based on the cascadeguard-seed](https://github.com/cascadeguard/cascadeguard-seed) repository:
 
 | File | Trigger | Purpose |
 |---|---|---|
 | `build-image.yaml` | `workflow_call` | Reusable single-image build, scan, SBOM, and signing |
 | `ci.yaml` | Push to `main`, pull requests | Matrix build of all images |
-| `scheduled-scan.yaml` | Nightly cron | Re-scans all published images; opens issues on new CVEs |
+| `check.yaml` | Nightly cron | Re-scans all published images; opens issues on new CVEs |
 | `release.yaml` | Tag push (`v*`) | Builds, signs, and pushes all images |
 
-### 5. Generate Kargo manifests
+Use `--dry-run` to preview without writing files:
 
 ```bash
-task synth
+cg build generate --dry-run
 ```
 
-This generates Kargo Warehouses, Stages, and AnalysisTemplates under `dist/`. ArgoCD watches this directory and deploys the manifests to your cluster.
-
-### 6. Commit and push
+### 7. Commit and push
 
 ```bash
-git add .
+git add images.yaml .cascadeguard.yaml .github/workflows/ .cascadeguard
 git commit -m "Initial CascadeGuard state"
 git push
 ```
 
-ArgoCD picks up the new manifests and Kargo begins orchestrating your image build pipeline.
+## Config Inheritance
 
-## Running CascadeGuard via Docker
+`.cascadeguard.yaml` supports a `defaults` section. Any field set here is applied to every image in `images.yaml` that doesn't already have that field:
 
-No local Python setup is required. All tasks run CascadeGuard via Docker:
+| Key | Description |
+|-----|-------------|
+| `defaults.registry` | Default container registry (e.g. `ghcr.io/cascadeguard`) |
+| `defaults.repository` | Default repository prefix |
+| `defaults.local.dir` | Default folder containing per-image Dockerfiles |
 
-```bash
-# Generate state files
-docker run --rm -v $(pwd):/workspace ghcr.io/cascadeguard/cascadeguard:v1.0.0 generate
-
-# Generate Kargo manifests
-docker run --rm -v $(pwd):/workspace ghcr.io/cascadeguard/cascadeguard:v1.0.0 synth
-
-# Generate CI pipelines
-docker run --rm -v $(pwd):/workspace ghcr.io/cascadeguard/cascadeguard:v1.0.0 generate-ci
-```
-
-## Enrolling a new image
-
-Use the `enrol` command to add a new image to `images.yaml`:
-
-```bash
-cascadeguard --images-yaml images.yaml enrol \
-  --name my-new-service \
-  --registry ghcr.io \
-  --repository your-org/my-new-service \
-  --provider github \
-  --repo your-org/my-new-service \
-  --dockerfile Dockerfile \
-  --branch main \
-  --rebuild-delay 7d
-```
-
-Then re-run `generate` and `generate-ci` to update state files and CI pipelines.
+Per-image values always take precedence over defaults. Disabled images (`enabled: false`) only require a `name` field.
 
 ## Checking image status
 
 ```bash
-# View all tracked images
-task status
-# or
-cascadeguard --state-dir cascadeguard/state status
+cg images status
+cg images check
 ```
-
-Prints a summary table of every application image and base image, including version, digest, build time, and dependency information.
 
 ## Next Steps
 

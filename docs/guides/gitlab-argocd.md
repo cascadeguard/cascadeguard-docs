@@ -2,7 +2,7 @@
 
 This guide walks through using CascadeGuard in a pipeline where **GitLab CI/CD** builds, scans, and signs your container images and **Argo CD + Kargo** orchestrates Kubernetes deployment.
 
-> **Note on GitLab CI support:** `cascadeguard generate-ci` currently generates GitHub Actions workflows only. GitLab CI support is planned. Until then, this guide shows the equivalent `.gitlab-ci.yml` configuration you would write manually. All other CascadeGuard commands (`enrol`, `generate`, `synth`, `scan`, `status`) work the same regardless of CI platform.
+> **Note on GitLab CI support:** `cg build generate` currently generates GitHub Actions workflows only. GitLab CI support is planned. Until then, this guide shows the equivalent `.gitlab-ci.yml` configuration you would write manually. All other CascadeGuard commands (`images enrol`, `images generate`, `images check`, `images status`) work the same regardless of CI platform.
 
 ## Prerequisites
 
@@ -97,7 +97,7 @@ includes:
 Use the `enrol` command to add images to `images.yaml`. If you already wrote the file by hand you can skip this step.
 
 ```bash
-cascadeguard --images-yaml images.yaml enrol \
+cg images enrol \
   --name my-app \
   --registry registry.gitlab.com \
   --repository your-group/my-app \
@@ -126,7 +126,7 @@ task synth
 
 This generates Kargo Warehouses, Stages, and AnalysisTemplates under `dist/`. Argo CD watches this directory and applies the manifests to your cluster.
 
-> **GitLab CI limitation:** `task generate-ci` emits GitHub Actions workflows only. GitLab CI pipeline generation is planned for a future release. Step 4 shows the equivalent `.gitlab-ci.yml` you write manually.
+> **GitLab CI limitation:** `cg build generate` emits GitHub Actions workflows only. GitLab CI pipeline generation is planned for a future release. Step 4 shows the equivalent `.gitlab-ci.yml` you write manually.
 
 Commit and push to your state repo:
 
@@ -321,16 +321,17 @@ After pushing to your state repo and application repo:
 
 ```bash
 # View current image status (versions, digests, build times, dependency graph)
-cascadeguard --state-dir cascadeguard/state status
-# or via task:
-task status
+cg images status
+
+# Run a check against enrolled images
+cg images check
 ```
 
 Expected output shows each managed image, its current digest, when it was last built, and which base images it depends on.
 
 ```bash
 # Run a manual scan against a published image
-cascadeguard scan registry.gitlab.com/your-group/my-app:latest
+cg scan registry.gitlab.com/your-group/my-app:latest
 ```
 
 This prints scan results from both Grype and Trivy, matching what CI would report.
@@ -359,17 +360,17 @@ Then update `images.yaml` to reflect the new base. Because `autoRebuild: true` i
 
 | Feature | Status |
 |---|---|
-| `cascadeguard generate-ci` for GitLab | Planned — manual `.gitlab-ci.yml` required today |
-| `cascadeguard build` command | GitHub-only (uses GitHub Actions API) |
-| `cascadeguard test` command | GitHub-only (queries GitHub Actions) |
+| `cg build generate` for GitLab | Planned — manual `.gitlab-ci.yml` required today |
+| `cg pipeline build` command | GitHub-only (uses GitHub Actions API) |
+| `cg pipeline test` command | GitHub-only (queries GitHub Actions) |
 | Keyless signing | Supported via GitLab OIDC (requires GitLab 15.7+) |
-| `cascadeguard scan`, `status`, `enrol`, `synth` | Fully supported |
+| `cg scan`, `images status`, `images enrol`, `synth` | Fully supported |
 
 ---
 
 ## Next steps
 
-- [CLI Reference](../reference/cli.md) — `cascadeguard scan`, `cascadeguard status`, `cascadeguard enrol`, and all other commands
+- [CLI Reference](../reference/cli.md) — `cg scan`, `cg images status`, `cg images enrol`, and all other commands
 - [GitHub Actions Integration Guide](../integrations/github-actions.md) — how the generated workflows are structured (useful reference even when writing GitLab CI manually)
 - [Security Model](../security-model.md) — how CascadeGuard handles SBOM generation, Cosign signing, and scan gating
 - [cascadeguard-exemplar](https://github.com/cascadeguard/cascadeguard-exemplar) — a working state repository with real generated workflows
