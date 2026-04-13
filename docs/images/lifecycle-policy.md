@@ -19,31 +19,33 @@ Every CascadeGuard image is in one of three states:
 | Image type | Support window |
 |------------|---------------|
 | Latest supported version | Always supported (Active) |
-| Previous supported versions | **6 months** after a newer supported version is released |
+| Previous supported versions | **90 days** after a newer supported version is released |
 
-**Example:** When `node:22` ships, `node:20` enters a 6-month deprecation window. At T+6 months, `node:20` reaches EOL.
+**Example:** When `node:22` ships, `node:20` enters a 90-day deprecation window. At T+90 days, `node:20` reaches EOL.
 
-### Premium Tier
+### Paid Tier
 
 | Image type | Support window |
 |------------|---------------|
 | Latest supported version | Always supported (Active) |
-| Previous supported versions | **12 months** after a newer supported version is released |
+| Previous supported versions | **180 days** after a newer supported version is released |
 
-Premium tier also includes custom notification channels (webhook, Slack) and priority rebuild requests.
+Extended support beyond 180 days is available on request — contact your account team.
+
+Paid tier also includes custom notification channels (webhook, Slack) and priority rebuild requests.
 
 ## Deprecation Timeline
 
-The following timeline applies when a new supported version is released:
+The following timeline applies when a new supported version is released. When discovery runs detect a new version, the published date is written to the state file and the previous version is automatically marked `deprecated`.
 
 | Time | Event |
 |------|-------|
-| T+0 | Previous supported version enters deprecation window; status set to `deprecated`; amber badge appears in catalog |
+| T+0 | New version discovered; published date written to state file; previous version status set to `deprecated`; amber badge appears in catalog |
 | T+0 | Email notification sent to users watching that image |
-| T+3 months | Reminder notification — "3 months remaining on [image]" |
-| T+6 months (Free) / T+12 months (Premium) | Image reaches EOL |
-| T+6/12 + 30 days | Image removed from active registry |
-| T+6/12 + 120 days | Digest purged entirely (no further pulls) |
+| T+45 days (Free) / T+90 days (Paid) | Reminder notification — "halfway to EOL on [image]" |
+| T+90 days (Free) / T+180 days (Paid) | Image reaches EOL |
+| T+90/180 + 30 days | Image removed from active registry |
+| T+90/180 + 120 days | Digest purged entirely (no further pulls) |
 
 > **Note:** Digests for EOL images remain pullable for 90 days after EOL to allow time to migrate. After that, the digest is permanently removed.
 
@@ -81,7 +83,7 @@ Registered users can subscribe to lifecycle state changes for any image:
 2. Click the image you want to track and enable **Lifecycle notifications**.
 3. You will receive email notifications at T+0 (deprecation) and T+3 months (reminder).
 
-Premium users can configure additional notification channels (webhook, Slack) from their account settings.
+Paid tier users can configure additional notification channels (webhook, Slack) from their account settings.
 
 ## Questions or Exceptions
 
