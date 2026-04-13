@@ -27,9 +27,9 @@ CascadeGuard is driven by a **state repository** — a Git repo that declares wh
 
 - `images.yaml` — enrollment configuration for all managed images
 - `.cascadeguard.yaml` — repo-level defaults and tool configuration
-- `base-images/` — tracked upstream base image state (generated)
-- `images/` — per-image state files (generated)
-- `.github/workflows/` — auto-generated CI pipelines (generated)
+- `.cascadeguard/base-images/` — tracked upstream base image state (generated)
+- `.cascadeguard/images/` — per-image state files (generated)
+- `.github/workflows/` — CI pipelines (from `cg images init`)
 
 See [cascadeguard-exemplar](https://github.com/cascadeguard/cascadeguard-exemplar) and [cascadeguard-open-secure-images](https://github.com/cascadeguard/cascadeguard-open-secure-images) for complete working examples, and [cascadeguard-seed](https://github.com/cascadeguard/cascadeguard-seed) for the seed repo thats used when cg images init is used.
 
@@ -104,36 +104,17 @@ cg images validate
 
 Verifies that the state in images.yaml and .cascadeguard.yaml is valid. This can be used in a PR check or similar.
 
-### 5. Generate state files
+### 5. Check upstream images and generate state
 
 ```bash
-cg images generate
+cg images check
 ```
 
-This reads `images.yaml`, analyzes Dockerfiles to discover base image dependencies, and writes state files to `base-images/` and `images/`.
+This reads `images.yaml`, analyzes Dockerfiles to discover base image dependencies, queries registries for current digests, and writes state files to `.cascadeguard/base-images/` and `.cascadeguard/images/`.
 
-### 6. Generate CI pipelines
+State files are committed to main by default (configurable via `check.state.destination` in `.cascadeguard.yaml`).
 
-```bash
-cg build generate
-```
-
-This emits the GitHub Actions workflow files under `.github/workflows/` based on the cascadeguard-seed](https://github.com/cascadeguard/cascadeguard-seed) repository:
-
-| File | Trigger | Purpose |
-|---|---|---|
-| `build-image.yaml` | `workflow_call` | Reusable single-image build, scan, SBOM, and signing |
-| `ci.yaml` | Push to `main`, pull requests | Matrix build of all images |
-| `check.yaml` | Nightly cron | Re-scans all published images; opens issues on new CVEs |
-| `release.yaml` | Tag push (`v*`) | Builds, signs, and pushes all images |
-
-Use `--dry-run` to preview without writing files:
-
-```bash
-cg build generate --dry-run
-```
-
-### 7. Commit and push
+### 6. Commit and push
 
 ```bash
 git add images.yaml .cascadeguard.yaml .github/workflows/ .cascadeguard
