@@ -18,8 +18,8 @@ Every CascadeGuard image is in one of three states:
 
 | Image type | Support window |
 |------------|---------------|
-| Latest minor version | Always supported (Active) |
-| Previous minor versions | **6 months** after a newer minor is released |
+| Latest supported version | Always supported (Active) |
+| Previous supported versions | **6 months** after a newer supported version is released |
 
 **Example:** When `node:22` ships, `node:20` enters a 6-month deprecation window. At T+6 months, `node:20` reaches EOL.
 
@@ -27,18 +27,18 @@ Every CascadeGuard image is in one of three states:
 
 | Image type | Support window |
 |------------|---------------|
-| Latest minor version | Always supported (Active) |
-| Previous minor versions | **12 months** after a newer minor is released |
+| Latest supported version | Always supported (Active) |
+| Previous supported versions | **12 months** after a newer supported version is released |
 
 Premium tier also includes custom notification channels (webhook, Slack) and priority rebuild requests.
 
 ## Deprecation Timeline
 
-The following timeline applies when a new minor version is released:
+The following timeline applies when a new supported version is released:
 
 | Time | Event |
 |------|-------|
-| T+0 | Previous minor enters deprecation window; status set to `deprecated`; amber badge appears in catalog |
+| T+0 | Previous supported version enters deprecation window; status set to `deprecated`; amber badge appears in catalog |
 | T+0 | Email notification sent to users watching that image |
 | T+3 months | Reminder notification — "3 months remaining on [image]" |
 | T+6 months (Free) / T+12 months (Premium) | Image reaches EOL |
