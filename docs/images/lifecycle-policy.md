@@ -84,7 +84,7 @@ Registered users can subscribe to lifecycle state changes for any image:
 
 1. Open the **Dashboard** and navigate to the **Catalog** tab.
 2. Click the image you want to track and enable **Lifecycle notifications**.
-3. You will receive email notifications at T+0 (deprecation) and T+3 months (reminder).
+3. You will receive email notifications at T+0 (deprecation) and T+45 days (Free) / T+90 days (Paid) (reminder).
 
 Paid tier users can configure additional notification channels (webhook, Slack) from their account settings.
 
