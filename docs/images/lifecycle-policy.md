@@ -14,6 +14,9 @@ Every CascadeGuard image is in one of three states:
 
 ## Support Windows by Tier
 
+> **What counts as a "supported version"?**
+> CascadeGuard tracks lifecycle at the **release-track** level — not individual patch releases. For Node.js this means LTS major lines (`node:20`, `node:22`); for Go and Python it means minor lines (`go:1.22`, `python:3.12`). The rolling track tag (e.g. `node:20`) always resolves to the latest patch automatically. The deprecation clock starts only when the upstream project releases a new successor track — not on patch bumps within the same line.
+
 ### Free Tier
 
 | Image type | Support window |
