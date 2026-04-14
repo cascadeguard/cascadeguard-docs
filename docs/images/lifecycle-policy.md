@@ -45,7 +45,7 @@ The following timeline applies when a new supported version is released. When di
 |------|-------|
 | T+0 | New version discovered; published date written to state file; previous version status set to `deprecated`; amber badge appears in catalog |
 | T+0 | Email notification sent to users watching that image |
-| T+45 days (Free) / T+90 days (Paid) | Reminder notification — "halfway to EOL on [image]" |
+| T+60 days (Free) / T+150 days (Paid) | Reminder notification — "1 month remaining on [image]" |
 | T+90 days (Free) / T+180 days (Paid) | Image reaches EOL |
 | T+90/180 + 30 days | Image removed from active registry |
 | T+90/180 + 120 days | Digest purged entirely (no further pulls) |
@@ -84,7 +84,7 @@ Registered users can subscribe to lifecycle state changes for any image:
 
 1. Open the **Dashboard** and navigate to the **Catalog** tab.
 2. Click the image you want to track and enable **Lifecycle notifications**.
-3. You will receive email notifications at T+0 (deprecation) and T+45 days (Free) / T+90 days (Paid) (reminder).
+3. You will receive email notifications at T+0 (deprecation) and T+60 days (Free) / T+150 days (Paid) (reminder).
 
 Paid tier users can configure additional notification channels (webhook, Slack) from their account settings.
 
