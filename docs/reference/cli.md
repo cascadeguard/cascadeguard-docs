@@ -7,11 +7,10 @@ CascadeGuard is invoked as `cg` (or the long-form `cascadeguard`). Commands use 
 | Group | Description |
 |---|---|
 | `images` | Image lifecycle management |
-| `build` | CI/CD pipeline generation |
+| `tools` | CI/CD pipeline generation and GitHub Actions supply chain utilities |
 | `init` | Scaffold a new state repository |
 | `pipeline` | CI/CD orchestration |
 | `vuln` | Vulnerability management |
-| `actions` | GitHub Actions utilities |
 
 ---
 
@@ -26,7 +25,7 @@ Flags scoped to `images` subcommands:
 
 ### Command design
 
-CascadeGuard commands follow a `<noun> <verb>` naming convention. The noun is the resource (`images`, `pipeline`, `vuln`, `actions`) and the verb is the operation. This keeps related commands grouped and tab-completion predictable.
+CascadeGuard commands follow a `<noun> <verb>` naming convention. The noun is the resource (`images`, `tools`, `pipeline`, `vuln`) and the verb is the operation. This keeps related commands grouped and tab-completion predictable.
 
 The `images` subcommands cover the full image lifecycle:
 
@@ -81,7 +80,7 @@ cg images enrol \
 | `--branch` | No | Branch to track (default: `main`) |
 | `--rebuild-delay` | No | Minimum time between rebuilds, e.g. `7d` |
 
-After enrolling, run `cg images generate` and `cg build generate` to update state files and pipelines.
+After enrolling, run `cg images generate` and `cg tools generate` to update state files and pipelines.
 
 ---
 
@@ -153,16 +152,16 @@ Files that already exist in the target directory are skipped with a warning. The
 
 ---
 
-## `build` — CI/CD pipeline generation
+## `tools` — CI/CD pipeline generation and GitHub Actions supply chain utilities
 
-### `build generate`
+### `tools generate`
 
 Generates GitHub Actions workflow files from `images.yaml`.
 
 ```bash
-cg build generate
-cg build generate --dry-run
-cg build generate --platform github
+cg tools generate
+cg tools generate --dry-run
+cg tools generate --platform github
 ```
 
 | Flag | Default | Description |
@@ -299,14 +298,12 @@ cg vuln issues \
 
 ---
 
-## `actions` — GitHub Actions utilities
-
-### `actions pin`
+### `tools pin`
 
 Rewrites GitHub Actions workflow files to pin `uses:` references from floating tags to full commit SHAs. This hardens your CI supply chain against tag-hijacking attacks.
 
 ```bash
-cg actions pin \
+cg tools pin \
   [--workflows-dir <path>] \
   [--dry-run] \
   [--update] \
@@ -322,12 +319,12 @@ cg actions pin \
 
 ---
 
-### `actions audit`
+### `tools audit`
 
 Audits workflow files against a declarative actions policy.
 
 ```bash
-cg actions audit \
+cg tools audit \
   [--policy <path>] \
   [--workflows-dir <path>]
 ```
@@ -341,12 +338,12 @@ Exits with a non-zero status if any violations are found.
 
 ---
 
-### `actions policy init`
+### `tools policy init`
 
 Scaffolds a starter `.cascadeguard/actions-policy.yaml` file.
 
 ```bash
-cg actions policy init \
+cg tools policy init \
   [--output <path>] \
   [--force]
 ```
@@ -367,7 +364,7 @@ State repositories typically use CascadeGuard via the shared Taskfile rather tha
 | `task generate` | Generate state files from `images.yaml` |
 | `task synth` | Generate Kargo manifests |
 | `task generate-and-synth` | Full regeneration (generate then synth) |
-| `task build-generate` | Generate GitHub Actions workflow files |
+| `task tools-generate` | Generate GitHub Actions workflow files |
 | `task status` | Show image status table |
 
 See [Getting Started](../getting-started.md) for the full Taskfile setup.

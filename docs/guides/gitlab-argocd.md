@@ -2,7 +2,7 @@
 
 This guide walks through using CascadeGuard in a pipeline where **GitLab CI/CD** builds, scans, and signs your container images and **Argo CD + Kargo** orchestrates Kubernetes deployment.
 
-> **Note on GitLab CI support:** `cg build generate` currently generates GitHub Actions workflows only. GitLab CI support is planned. Until then, this guide shows the equivalent `.gitlab-ci.yml` configuration you would write manually. All other CascadeGuard commands (`images enrol`, `images generate`, `images check`, `images status`) work the same regardless of CI platform.
+> **Note on GitLab CI support:** `cg tools generate` currently generates GitHub Actions workflows only. GitLab CI support is planned. Until then, this guide shows the equivalent `.gitlab-ci.yml` configuration you would write manually. All other CascadeGuard commands (`images enrol`, `images generate`, `images check`, `images status`) work the same regardless of CI platform.
 
 ## Prerequisites
 
@@ -126,7 +126,7 @@ task synth
 
 This generates Kargo Warehouses, Stages, and AnalysisTemplates under `dist/`. Argo CD watches this directory and applies the manifests to your cluster.
 
-> **GitLab CI limitation:** `cg build generate` emits GitHub Actions workflows only. GitLab CI pipeline generation is planned for a future release. Step 4 shows the equivalent `.gitlab-ci.yml` you write manually.
+> **GitLab CI limitation:** `cg tools generate` emits GitHub Actions workflows only. GitLab CI pipeline generation is planned for a future release. Step 4 shows the equivalent `.gitlab-ci.yml` you write manually.
 
 Commit and push to your state repo:
 
@@ -360,7 +360,7 @@ Then update `images.yaml` to reflect the new base. Because `autoRebuild: true` i
 
 | Feature | Status |
 |---|---|
-| `cg build generate` for GitLab | Planned — manual `.gitlab-ci.yml` required today |
+| `cg tools generate` for GitLab | Planned — manual `.gitlab-ci.yml` required today |
 | `cg pipeline build` command | GitHub-only (uses GitHub Actions API) |
 | `cg pipeline test` command | GitHub-only (queries GitHub Actions) |
 | Keyless signing | Supported via GitLab OIDC (requires GitLab 15.7+) |

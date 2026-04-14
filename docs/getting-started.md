@@ -1,5 +1,22 @@
 # Getting Started with CascadeGuard Image Factory
 
+**Image Factory** is the end-to-end image lifecycle process that CascadeGuard automates: **detect** upstream base image changes → **rebuild** your images via your existing CI/CD pipeline → **roll out** updated images to your deployments. It is implemented by the `cg images` command group.
+
+CascadeGuard also provides `cg tools` — a separate set of supply chain utilities for your CI/CD tooling itself: pin GitHub Actions to verified commit SHAs, audit workflow files against a policy, and scaffold policy configuration. These work on any repository, not just image build repos.
+
+---
+
+> **New to CascadeGuard? Two ways to get value immediately:**
+>
+> | I want to… | Start here |
+> |---|---|
+> | Automate image builds and keep base images up to date | This guide — Image Factory quick start |
+> | Pin and audit GitHub Actions in my CI pipelines | [Supply Chain Automation guide](guides/supply-chain-automation.md) |
+> | Drop in a hardened base image right now | [CascadeGuard Secure Images](images/lifecycle-policy.md) |
+> | Understand how it all fits together | [Security Model](security-model.md) |
+
+---
+
 CascadeGuard Image Factory automates container image lifecycle management. It monitors base images for updates, discovers Dockerfile dependencies, identifies vulnerabilities and orchestrates intelligent rebuilds through your existing build tools & processes.
 
 ## Prerequisites
@@ -115,10 +132,10 @@ This reads `images.yaml`, analyzes Dockerfiles to discover base image dependenci
 ### 6. Generate CI pipelines
 
 ```bash
-cg build generate
+cg tools generate
 ```
 
-This emits the GitHub Actions workflow files under `.github/workflows/` based on the cascadeguard-seed](https://github.com/cascadeguard/cascadeguard-seed) repository:
+This emits the GitHub Actions workflow files under `.github/workflows/` based on the [cascadeguard-seed](https://github.com/cascadeguard/cascadeguard-seed) repository:
 
 | File | Trigger | Purpose |
 |---|---|---|
@@ -130,7 +147,7 @@ This emits the GitHub Actions workflow files under `.github/workflows/` based on
 Use `--dry-run` to preview without writing files:
 
 ```bash
-cg build generate --dry-run
+cg tools generate --dry-run
 ```
 
 ### 7. Commit and push
