@@ -91,3 +91,14 @@ Paid tier users can configure additional notification channels (webhook, Slack) 
 ## Questions or Exceptions
 
 For questions about this policy, or to request a timeline exception, open an issue via the [CascadeGuard support portal](https://cascadeguard.app/support) or reach out to your account team.
+
+---
+
+## Automate with the CascadeGuard CLI
+
+Using CascadeGuard Secure Images in production? Pair them with the CascadeGuard CLI to close the supply chain loop:
+
+- [`cg images`](../getting-started.md) — automatically detects when a base image is updated and triggers a signed rebuild of your downstream images
+- [`cg tools`](../guides/supply-chain-automation.md) — pins and audits the GitHub Actions used in your build pipelines
+
+Pull a secure base image and let CascadeGuard handle the rebuild loop when it changes.
